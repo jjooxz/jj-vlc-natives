@@ -1,7 +1,7 @@
 package me.jojoquis.vlc;
 
 import com.sun.jna.NativeLibrary;
-import uk.co.caprica.vlcj.binding.RuntimeUtil;
+import uk.co.caprica.vlcj.binding.support.runtime.RuntimeUtil;
 
 import java.io.*;
 import java.nio.file.*;
