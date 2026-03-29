@@ -1,12 +1,11 @@
 package me.jojoquis.vlc;
 
 import com.sun.jna.NativeLibrary;
-import uk.co.caprica.vlcj.binding.support.runtime.RuntimeUtil;
 
 import java.io.*;
+import java.net.URI;
 import java.nio.file.*;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.Collections;
 
 public class VlcInitializer {
 
@@ -19,18 +18,21 @@ public class VlcInitializer {
             File tempDir = new File(System.getProperty("java.io.tmpdir"), "jj-vlc");
             if (!tempDir.exists()) tempDir.mkdirs();
 
-            extract("/vlc/libvlc.dll", tempDir);
-            extract("/vlc/libvlccore.dll", tempDir);
-            extract("/vlc/axvlc.dll", tempDir);
-            extract("/vlc/npvlc.dll", tempDir);
+            // DLLs principais
+            extract("/lib/vlc/libvlc.dll", tempDir);
+            extract("/lib/vlc/libvlccore.dll", tempDir);
+            extract("/lib/vlc/axvlc.dll", tempDir);
+            extract("/lib/vlc/npvlc.dll", tempDir);
 
+            // Plugins (PASTA COMPLETA)
             File pluginsDir = new File(tempDir, "plugins");
             if (!pluginsDir.exists()) {
-                unzip("/vlc/plugins.zip", pluginsDir);
+                copyResourceDirectory("/lib/vlc/plugins", pluginsDir);
             }
 
+            // Config VLC
             System.setProperty("jna.nosys", "true");
-            NativeLibrary.addSearchPath(RuntimeUtil.getLibVlcLibraryName(), tempDir.getAbsolutePath());
+            NativeLibrary.addSearchPath("libvlc", tempDir.getAbsolutePath());
             System.setProperty("VLC_PLUGIN_PATH", pluginsDir.getAbsolutePath());
 
             initialized = true;
@@ -52,25 +54,34 @@ public class VlcInitializer {
         }
     }
 
-    private static void unzip(String resource, File dest) throws IOException {
-        dest.mkdirs();
+    private static void copyResourceDirectory(String resourcePath, File destDir) throws Exception {
+        destDir.mkdirs();
 
-        try (InputStream in = VlcInitializer.class.getResourceAsStream(resource);
-             ZipInputStream zis = new ZipInputStream(in)) {
+        URI uri = VlcInitializer.class.getResource(resourcePath).toURI();
 
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                File file = new File(dest, entry.getName());
-
-                if (entry.isDirectory()) {
-                    file.mkdirs();
-                } else {
-                    file.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(file)) {
-                        zis.transferTo(fos);
-                    }
-                }
+        if (uri.getScheme().equals("jar")) {
+            try (FileSystem fs = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
+                Path path = fs.getPath(resourcePath);
+                copyFolder(path, destDir.toPath());
             }
+        } else {
+            Path path = Paths.get(uri);
+            copyFolder(path, destDir.toPath());
         }
+    }
+
+    private static void copyFolder(Path source, Path target) throws IOException {
+        Files.walk(source).forEach(path -> {
+            try {
+                Path dest = target.resolve(source.relativize(path).toString());
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(dest);
+                } else {
+                    Files.copy(path, dest, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 }
